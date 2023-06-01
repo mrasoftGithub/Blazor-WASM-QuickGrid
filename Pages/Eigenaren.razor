@@ -1,0 +1,143 @@
+﻿@page "/eigenaren"
+
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using static QuickGridMRA.Shared.Eigenaar
+@using static QuickGridMRA.Shared.Fout
+
+@inject IConfiguration Configuration
+@inject HttpClient httpClient
+@inject NavigationManager navigationManager
+
+<div class="row">
+    <div>
+        <h3>Eigenaren</h3>
+    </div>
+    <div>
+        &nbsp;<button class="btn btn-primary" @onclick="(() => EigenaarVoegToe())">Voeg Toe</button>
+    </div>
+</div>
+
+<div>@resultaat</div>
+<br />
+
+@if (eigenaren == null)
+{
+    <p><em>Bezig met laden...</em></p>
+}
+else
+{
+<div class="row">
+    <QuickGrid Items="GefilterdeEigenaren" ResizableColumns Pagination="pagination">
+
+        <PropertyColumn Property="f => f.ID" Title="ID" Sortable="false" Align="Align.Center" />
+
+        <PropertyColumn Property="f => f.Omschrijving" Title="Omschrijving" Sortable="true">
+            <ColumnOptions>
+                <input type="search"
+                   autofocus
+                   @bind="omschrijvingFilter"
+                   @bind:event="oninput"
+                   placeholder="Filter op..." />
+            </ColumnOptions>
+        </PropertyColumn>
+
+        <PropertyColumn Property="f => f.Regio" Title="Regio" Sortable="true" />
+
+        <TemplateColumn Title="Muteer">
+            <button class="btn btn-info" @onclick="(() => EigenaarMuteer(context.ID))">Edit</button>
+        </TemplateColumn>
+
+        <TemplateColumn Title="Verwijder">
+            <button class="btn btn-danger" @onclick="(() => EigenaarVerwijder(context.ID))">Delete</button>
+        </TemplateColumn>
+
+    </QuickGrid>
+</div>
+
+    <!-- In .NET 6 -->
+    <!-- https://www.youtube.com/watch?v=sVrWK5GAPgU -->
+    <!-- https://github.com/dotnet/razor/issues/7395 -->
+    <Paginator Value="@pagination" />
+
+    <!-- In .NET 7/8 -->
+    <!-- <Paginator State="@pagination" /> -->
+}
+
+@code {
+
+    // Pagination...
+    PaginationState pagination = new PaginationState { ItemsPerPage = 5 };
+
+    // De array die wordt gevuld door de Web API...
+    private EIGENAAR[]? eigenaren;
+
+    // Wat we nog meer nodig hebben...
+    string? resultaat = string.Empty;
+    Fout? fout = new Fout();
+
+    // Voor het filteren...
+    string? omschrijvingFilter;
+
+    IQueryable<EIGENAAR> GefilterdeEigenaren
+    {
+        get
+        {
+            // eigenaren is gevuld door OnInitializedAsync()
+            var resultaat = eigenaren.AsQueryable();
+
+            // eventueel nog filteren met een filterwaarde
+            if (!string.IsNullOrEmpty(omschrijvingFilter))
+            {
+                resultaat = resultaat.Where(f => f.Omschrijving.Contains(omschrijvingFilter, StringComparison.CurrentCultureIgnoreCase));
+            }
+            return resultaat;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Designed (returning deserialized objects directly),
+            // it does not produce any HttpResponseMessage
+            // eigenaren = await httpClient.GetFromJsonAsync<EIGENAAR[]>("/api/CRUD/HaalOpEigenaren");
+            var opgehaald = await httpClient.GetAsync(Configuration["apiLocatie"] + "/HaalOpEigenaren");
+            if (!opgehaald.IsSuccessStatusCode)
+            {
+                fout = await opgehaald.Content.ReadFromJsonAsync<Fout>();
+                if (fout is not null)
+                {
+                    if (fout.Detail is not null)
+                    {
+                        resultaat = "De gegevens van de eigenaren kunnen niet opgehaald worden. " +
+                            fout.Detail.ToString() + " (" + opgehaald.StatusCode + ")";
+                    }
+                }
+            }
+            else
+            {
+                eigenaren = await opgehaald.Content.ReadFromJsonAsync<EIGENAAR[]?>();
+            }
+        }
+        catch (Exception e)
+        {
+            resultaat = e.Message;
+        }
+    }
+
+    public void EigenaarVoegToe()
+    {
+        navigationManager.NavigateTo("/eigenaarvoegtoe");
+    }
+
+    public void EigenaarMuteer(int? ID)
+    {
+        navigationManager.NavigateTo("/eigenaarmuteer/" + ID);
+        Console.WriteLine(ID);
+    }
+
+    public void EigenaarVerwijder(int? ID)
+    {
+        navigationManager.NavigateTo("/eigenaarverwijder/" + ID);
+    }
+}
